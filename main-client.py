@@ -1,7 +1,6 @@
 import asyncio
 import os
-from azure.iot.device.aio import IoTHubDeviceClient
-from azure.iot.device import MethodResponse
+from azure.iot.device import IoTHubDeviceClient, MethodResponse, Message
 import paho.mqtt.client as mqtt
 import time
 from datetime import datetime
@@ -23,9 +22,10 @@ def create_iot_client():
         print(message.data)
 
     # define behavior for receiving direct methods
-    async def method_handler(method_request):
+    def method_handler(method_request):
+        print("Received Method:", method_request.name, "payload:", method_request.payload)
         if method_request.name == "order":
-            result = mqtt_publish()
+            result = mqtt_publish(method_request.payload)
             payload = {"result": result}
             status = 200
             print("Completed method 'order'")
@@ -34,7 +34,7 @@ def create_iot_client():
             status = 400
             print("Unknown direct method request")
         method_response = MethodResponse.create_from_method_request(method_request, status, payload)
-        await client.send_method_response(method_response)
+        client.send_method_response(method_response)
 
     # set the incoming data handlers on the client
     client.on_message_received = iot_message_handler
@@ -43,12 +43,13 @@ def create_iot_client():
     return client
 
 #Send published MQTT Mssages to IoT Hub
-async def send_telemetry(client, message):
-    while True:
+def send_telemetry(client, msg):
         print("Sending Telemetry...")
         try:
-            await client.send_message(message)
-        except Exception:
+            client.send_message(toJSON(msg))
+            print("Telemetry sent!\n")
+        except Exception as e:
+            print("Error:", str(e))
             print("Sending telemetry failed")
 
 def create_mqtt_client():
@@ -60,17 +61,16 @@ def create_mqtt_client():
         print("MQTT Publish Received, Topic:", topic, "and Message:\n", m_decode)
         iot_message = {
             "topic":topic,
-            "message":m_decode
+            "payload": toObject(m_decode)
         }
-        iot_json = toJSON(iot_message)
-        send_telemetry(iot_client, iot_json)
+        send_telemetry(iot_client, iot_message)
         return True
     
     client.on_message = mqtt_message_handler
 
     return client
 
-#return ISO 8601 datetime-stamp 10 seconds in the future
+# return ISO 8601 datetime-stamp 10 seconds in the future
 def current_datetime():
     ts = time.time() + 10
     dt = datetime.utcfromtimestamp(ts)
@@ -78,12 +78,15 @@ def current_datetime():
     iso += "Z"
     return iso
 
-#publish the production order
-async def mqtt_publish(colour):
+# publish the production order
+# colour must be sent via Attribute "colour"
+# can be "RED", "BLUE" or "WHITE"
+def mqtt_publish(payload):
     datetime = current_datetime()
+    print(payload["colour"])
     data_json={
         "ts":datetime,
-        "type":colour
+        "type":payload["colour"]
     }
     mqtt_json = toJSON(data_json)
     print("Publishing to", data["PUB_TOPIC"], ":\n", mqtt_json)
@@ -96,16 +99,16 @@ async def mqtt_publish(colour):
 async def main():
     global iot_client
     global mqtt_client
-    
+
     iot_client = create_iot_client()
     mqtt_client = create_mqtt_client()
 
     print("Connecting to IoT Hub...")
-    await iot_client.connect()
+    iot_client.connect()
     print("Iot Hub Connection Success!")
 
     print("Connecting to MQTT Broker...")
-    await mqtt_client.connect(data["BROKER"])
+    mqtt_client.connect(data["BROKER"])
     print("MQTT Connection Success!")
 
     for t in data["SUB_TOPICS"]:
@@ -113,17 +116,19 @@ async def main():
 
     mqtt_client.loop_start()
 
-    while True:
-        try:
-            await asyncio.sleep(1)
-        except KeyboardInterrupt:
-            print("User exit!")
-        except Exception:
-            print("Unexpected error")
-        finally:
-            # Shut down for graceful exit
-            await iot_client.shutdown()
-            await mqtt_client.disconnect()
+    try:
+        while True:
+            await asyncio.sleep(5)
+            print("running...")
+    except KeyboardInterrupt:
+        print("User exit!")
+    except Exception:
+        print("Unexpected error")
+    finally:
+        # Shut down for graceful exit
+        iot_client.shutdown()
+        mqtt_client.disconnect()
+        print("Disconnected all clients.")
 
 #run main()
 if __name__ == "__main__":
