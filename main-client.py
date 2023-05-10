@@ -116,19 +116,22 @@ async def main():
 
     mqtt_client.loop_start()
 
-    try:
-        while True:
+    while True:
+        try:
             await asyncio.sleep(5)
             print("running...")
-    except KeyboardInterrupt:
-        print("User exit!")
-    except Exception:
-        print("Unexpected error")
-    finally:
-        # Shut down for graceful exit
-        iot_client.shutdown()
-        mqtt_client.disconnect()
-        print("Disconnected all clients.")
+        except KeyboardInterrupt:
+            print("User exit!")
+            break
+        except Exception:
+            print("Unexpected error")
+            break
+   
+   # Shut down for graceful exit
+    iot_client.shutdown()
+    mqtt_client.disconnect()
+    print("Disconnected all clients.")
+        
 
 #run main()
 if __name__ == "__main__":
