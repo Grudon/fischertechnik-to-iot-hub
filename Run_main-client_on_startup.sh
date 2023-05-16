@@ -20,4 +20,4 @@ done
 
 echo "$(date): Connected to internet\n";
 
-python3 /home/user/Desktop/main-client.py
+python3 /home/user/Documents/fischertechnik-to-iot-hub-main/main-client.py
