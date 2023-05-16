@@ -1,3 +1,5 @@
+#Please configure parameters.py first
+
 import asyncio
 import os
 from azure.iot.device import IoTHubDeviceClient, MethodResponse, Message
@@ -127,7 +129,7 @@ async def main():
             print("Unexpected error")
             break
    
-   # Shut down for graceful exit
+   #Shut down for graceful exit
     iot_client.shutdown()
     mqtt_client.disconnect()
     print("Disconnected all clients.")
