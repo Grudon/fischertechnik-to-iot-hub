@@ -9,28 +9,33 @@ from datetime import datetime
 import json
 from parameter import data
 
+# Turn object to JSON
 def toJSON(a):
     return json.dumps(a)
 
+# Turn JSON to Object
 def toObject(b):
     return json.loads(b)
 
+# Create an instance of the Azure IoT Device client
 def create_iot_client():
     client = IoTHubDeviceClient.create_from_connection_string(data["CONNECTION_STRING"])
 
-    # define behavior for receiving a message
+    # Define behaviour for receiving a message
     def iot_message_handler(message):
         print("IOT message received:")
         print(message.data)
 
-    # define behavior for receiving direct methods
+    # Define behaviour for receiving direct methods
     def method_handler(method_request):
         print("Received Method:", method_request.name, "payload:", method_request.payload)
+        # How to handle the order-method
         if method_request.name == "order":
             result = mqtt_publish(method_request.payload)
             payload = {"result": result}
             status = 200
             print("Completed method 'order'")
+        # If method is not known
         else:
             payload = {}
             status = 400
@@ -38,13 +43,13 @@ def create_iot_client():
         method_response = MethodResponse.create_from_method_request(method_request, status, payload)
         client.send_method_response(method_response)
 
-    # set the incoming data handlers on the client
+    # Set the incoming data handlers on the client
     client.on_message_received = iot_message_handler
     client.on_method_request_received = method_handler
 
     return client
 
-#Send published MQTT Mssages to IoT Hub
+# Send received MQTT Messages to IoT Hub
 def send_telemetry(client, msg):
         print("Sending Telemetry...")
         try:
@@ -52,27 +57,32 @@ def send_telemetry(client, msg):
             print("Telemetry sent!\n")
         except Exception as e:
             print("Error:", str(e))
-            print("Sending telemetry failed")
+            print("Sending telemetry failed\n")
 
+# Create an instance of the Paho MQTT client
 def create_mqtt_client():
     client = mqtt.Client("raspberry-client")
 
+    # Define behaviour for receiving messages
     def mqtt_message_handler(client, userdata, msg):
         topic = msg.topic
+        # Decode payload to an usable format
         m_decode = str(msg.payload.decode("utf-8","ignore"))
         print("MQTT Publish Received, Topic:", topic, "and Message:\n", m_decode)
         iot_message = {
             "topic":topic,
             "payload": toObject(m_decode)
         }
+        # Relay received MQTT message to IoT Hub
         send_telemetry(iot_client, iot_message)
         return True
     
+    # Set the incoming data handler on the client
     client.on_message = mqtt_message_handler
 
     return client
 
-# return ISO 8601 datetime-stamp 10 seconds in the future
+# Return Fischertechnik-conform ISO 8601 datetime-stamp 10 seconds in the future
 def current_datetime():
     ts = time.time() + 10
     dt = datetime.utcfromtimestamp(ts)
@@ -80,9 +90,9 @@ def current_datetime():
     iso += "Z"
     return iso
 
-# publish the production order
-# colour must be sent via Attribute "colour"
-# can be "RED", "BLUE" or "WHITE"
+# Send the production order via MQTT publish to Fischertechnik
+# Colour must be sent via attribute "colour" in IoT Hub payload
+# Can be "RED", "BLUE" or "WHITE"
 def mqtt_publish(payload):
     datetime = current_datetime()
     print(payload["colour"])
@@ -99,6 +109,7 @@ def mqtt_publish(payload):
 # Subscribe to all topics
 # Run in Loop except when Errors or UserInput happen    
 async def main():
+    # Global clients because they need to be called in other functons
     global iot_client
     global mqtt_client
 
@@ -113,11 +124,14 @@ async def main():
     mqtt_client.connect(data["BROKER"])
     print("MQTT Connection Success!")
 
+    # Subscribe to all topics in list
     for t in data["SUB_TOPICS"]:
         mqtt_client.subscribe(t)
 
+    # Start network loop for MQTT client to receive messages
     mqtt_client.loop_start()
 
+    # Run forever except when CTRL+C or error
     while True:
         try:
             await asyncio.sleep(5)
@@ -135,6 +149,6 @@ async def main():
     print("Disconnected all clients.")
         
 
-#run main()
+# Run main()
 if __name__ == "__main__":
     asyncio.run(main())
